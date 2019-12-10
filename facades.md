@@ -1,4 +1,4 @@
-# Facades  
+﻿# Facades  
 
 Facades abstrahieren den Zugriff auf die Datenbank. Dafür bieten diese Schnittstellen für das Laden und das Manipulieren von Daten. Jede Datenbanktabelle bestitzt eine eigene Facade, die den Zugriff abstrahiert.
 
@@ -131,7 +131,10 @@ Die Signatur der Methode sieht folgendermaßen aus.
 ```
 
 Beispielhafte Definition der Prozess-Methode für die ImageFacade. Nach der Definition muss nichts mehr gemacht werden.
+
 ```typescript
+Beispiel:
+
 const facade = new ImageFacade();
 facade.postProcessFilter = ((entities: Image[]) => {  
    // process entities
@@ -139,3 +142,95 @@ facade.postProcessFilter = ((entities: Image[]) => {
 });
 ```
 ___
+
+## Entitäten einfügen
+
+Jede Facade bestitzt eine Methode, um eine neue Entität einzufügen. Diese muss allerdings in der jeweiligen Facade überschrieben werden. Die Methode **insertStatement** retouniert die zuletzt eingefügten IDs als Array. Alle Insert-Statements werden in einer Transaktion ausgeführt.
+
+```typescript
+Beispiel:
+
+public async insert(user: User): Promise<User> {
+	const attributes: SQLValueAttributes = this.getSQLInsertValueAttributes(user);  
+	const result = await this.insertStatement(attributes);  
+  
+	if (result.length > 0) {  
+		user.id = result[0].insertedId;  
+	}  
+  
+    return user;  
+}
+```
+
+Es können auch mehrere Entitäten in einer Transaktion eingefügt werden. Dazu können der **insertStatement**-Methode als zweiten Parameter mehrere Entitäten übergeben werden. Der Parameter **attributes** wird dadurch aber ignoriert. Die Insert-Statements werden in der Reihenfolge ausgeführt, in der sie übergeben wurden. Zusätzlich kann noch ein Callback übergeben werden, der nach dem jeweiligen Insert ausgeführt wird. Das Callback wird mit der eingefügten ID aufgerufen. Dort kann beispielsweise eine ID für das nächste Insert gesetzt werden.
+
+```typescript
+Beispiel: 
+
+public async insert(patient: Patient): Promise<Patient> {  
+    const attributes: SQLValueAttributes = this.getSQLInsertValueAttributes(patient);  
+  
+	const onInsertUser = (insertId: number, sqlValueAttributes: SQLValueAttributes) => {  
+		patient.id = insertId;  
+		const patientIdAttribute: SQLValueAttribute = new SQLValueAttribute("patient_id", this.tableName, patient.id);  
+		sqlValueAttributes.addAttribute(patientIdAttribute);  
+	};  
+  
+     /**
+      * Mehrere Insert-Statements 
+      */
+	 await this.insertStatement(attributes, [
+		 {facade: this._userFacade, entity: patient, callBackOnInsert: onInsertUser},
+		 {facade: this, entity: patient}  
+	 ]);  
+  
+	 return patient;  
+}
+```
+
+## Entitäten aktualisieren
+Jede Facade bestitzt eine Methode, um eine Entität zu aktualisieren. Diese muss allerdings in der jeweiligen Facade überschrieben werden. Die Methode **updateStatement** retouniert die Anzahl der aktualisieren Zeilen. Alle Update-Statements werden in einer Transaktion ausgeführt. Ein Update kann nicht durchgeführt werden, ohne dass ein Filter gesetzt wird. Dadurch wird verhindert, dass ausversehen alle Entitäten aktualisiert werden.
+
+```typescript
+Beispiel:
+
+public update(user: User): Promise<number> {  
+    const attributes: SQLValueAttributes = this.getSQLUpdateValueAttributes(user);  
+    return this.updateStatement(attributes);  
+}
+```
+
+Es können auch mehrere Entitäten in einer Transaktion aktualisiert werden. Dazu können der **updateStatement**-Methode als zweiten Parameter mehrere Entitäten übergeben werden. Der Parameter **attributes** wird dadurch aber ignoriert. Die Update-Statements werden in der Reihenfolge ausgeführt, in der sie übergeben wurden. 
+
+```typescript
+Beispiel:
+
+public updateUserPatient(patient: Patient): Promise<number> {  
+    const attributes: SQLValueAttributes = this.getSQLUpdateValueAttributes(patient);  
+    return this.updateStatement(attributes,[
+	    {facade: this, entity: patient}, 
+	    {facade: this._userFacade, entity: patient}
+    ]);  
+}
+```
+
+## Entitäten löschen
+Jede Facade bestitzt eine Methode, um eine Entität zu löschen. Diese muss allerdings in der jeweiligen Facade überschrieben werden. Die Methode **deleteStatement** retouniert die Anzahl der gelöschten Zeilen. Alle Delete-Statements werden in einer Transaktion ausgeführt. Ein Delete kann nicht durchgeführt werden, ohne dass ein Filter gesetzt wird. Dadurch wird verhindert, dass ausversehen alle Entitäten gelöscht werden.
+
+```typescript
+Beispiel:
+
+public delete(): Promise<number> {  
+    return this.deleteStatement([this]);  
+}
+```
+
+Es können auch mehrere Entitäten in einer Transaktion gelöscht werden. Dazu können der **deleteStatement**-Methode mehrere Facades übergeben werden. Die Delete-Statements werden in der Reihenfolge ausgeführt, in der sie übergeben wurden. 
+
+```typescript
+Beispiel:
+
+public delete(): Promise<number> {  
+    return this.deleteStatement([this, this._userFacade]);  
+}
+```
